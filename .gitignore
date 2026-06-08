@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.env
+*.key.json
+service-account*.json
+permutive-tech-challenges-tayybajamal.json

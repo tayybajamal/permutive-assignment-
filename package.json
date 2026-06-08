@@ -1,0 +1,21 @@
+{
+  "name": "permutive-ce-challenge",
+  "version": "1.0.0",
+  "description": "Permutive Customer Engineer Challenge",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "ts-node server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@google-cloud/firestore": "^8.6.0",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.13.10",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.2"
+  }
+}
