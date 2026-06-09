@@ -1,4 +1,6 @@
 import express from "express";
+import fs from "fs";
+import os from "os";
 import { getTaxonomies } from "./taxonomy";
 import { Firestore } from "@google-cloud/firestore";
 import * as path from "path";
@@ -9,20 +11,36 @@ type WebhookRequest =
 
 const PROJECT_ID = "permutive-tech-challenges";
 const KEY_FILE = "permutive-tech-challenges-tayybajamal.json";
+const TAXONOMY_ID = "iab_3_1";
 
-function createFirestore(): Firestore {
-  const credentialsJson = process.env.GOOGLE_CREDENTIALS_JSON;
+function resolveKeyFilename(): string {
+  const credentialsJson = process.env.GOOGLE_CREDENTIALS_JSON?.trim();
   if (credentialsJson) {
-    return new Firestore({
-      projectId: PROJECT_ID,
-      credentials: JSON.parse(credentialsJson),
-      databaseId: "(default)",
-    });
+    const parsed = JSON.parse(credentialsJson) as { private_key?: string };
+    if (parsed.private_key?.includes("\\n")) {
+      parsed.private_key = parsed.private_key.replace(/\\n/g, "\n");
+    }
+    const credPath = path.join(os.tmpdir(), "gcp-credentials.json");
+    fs.writeFileSync(credPath, JSON.stringify(parsed));
+    console.log("Firestore: using GOOGLE_CREDENTIALS_JSON");
+    return credPath;
   }
 
+  const localPath = path.join(process.cwd(), KEY_FILE);
+  if (fs.existsSync(localPath)) {
+    console.log("Firestore: using local credentials file");
+    return localPath;
+  }
+
+  throw new Error(
+    "GCP credentials not found. Set GOOGLE_CREDENTIALS_JSON on Render or add the key file locally."
+  );
+}
+
+function createFirestore(): Firestore {
   return new Firestore({
     projectId: PROJECT_ID,
-    keyFilename: path.join(process.cwd(), KEY_FILE),
+    keyFilename: resolveKeyFilename(),
     databaseId: "(default)",
   });
 }
@@ -31,6 +49,11 @@ const app = express();
 app.use(express.json());
 
 const db = createFirestore();
+
+function extractArticleId(url: string): string | null {
+  const match = url.match(/\/article\/.*?-(\d+)\/?$/);
+  return match?.[1] ?? null;
+}
 
 app.post("/webhook", async (request, response) => {
   const body = request.body as WebhookRequest;
@@ -43,16 +66,9 @@ app.post("/webhook", async (request, response) => {
   if (body.type === "classify") {
     try {
       const { url } = body;
+      const articleId = extractArticleId(url);
 
-      let url1 = url;
-      if (url1.endsWith("/")) {
-        url1 = url1.slice(0, -1);
-      }
-
-      const urlParts = url1.split("-");
-      const articleId = urlParts[urlParts.length - 1];
-
-      if (!articleId || isNaN(Number(articleId))) {
+      if (!articleId) {
         return response.json({ classifications: [] });
       }
 
@@ -63,27 +79,15 @@ app.post("/webhook", async (request, response) => {
         return response.json({ classifications: [] });
       }
 
-      const articleData = docSnap.data();
-      const rawCategories = articleData?.categories;
+      const rawCategories: string[] = docSnap.data()?.categories ?? [];
 
-      const taxonomiesList = getTaxonomies();
-      const dynamicTaxonomyId = taxonomiesList[0]?.id;
+      const classifications = rawCategories.map((categoryId) => ({
+        type: "categories" as const,
+        value: String(categoryId),
+        taxonomy: TAXONOMY_ID,
+      }));
 
-      const structuredOutput = [];
-
-      if (rawCategories) {
-        for (let i = 0; i < rawCategories.length; i++) {
-          const currentCategoryNumber = rawCategories[i];
-
-          structuredOutput.push({
-            type: "categories",
-            value: String(currentCategoryNumber),
-            taxonomy: dynamicTaxonomyId,
-          });
-        }
-      }
-
-      return response.json({ classifications: structuredOutput });
+      return response.json({ classifications });
     } catch (error) {
       console.error("Error processing classify request:", error);
       return response.status(500).json({ error: "Internal Server Error" });
