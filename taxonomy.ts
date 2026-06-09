@@ -17,7 +17,8 @@ let cachedTaxonomies: Taxonomy[] | null = null;
 export function getTaxonomies(): Taxonomy[] {
   if (cachedTaxonomies) return cachedTaxonomies;
 
-  const tsvPath = path.join(__dirname, "..", "assets", "iab_content_taxonomy.tsv");
+  // Uses process.cwd() to resolve from the root directory on Render
+  const tsvPath = path.join(process.cwd(), "assets", "iab_content_taxonomy.tsv");
   const content = fs.readFileSync(tsvPath, "utf-8");
   const lines = content.trim().split("\n");
 
