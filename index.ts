@@ -11,15 +11,13 @@ const app = express();
 app.use(express.json());
 
 const file = 'permutive-tech-challenges-tayybajamal.json';
-const path1 = path.join(__dirname, file);
+const path1 = path.join(process.cwd(), file);
 
 const db = new Firestore({
   projectId: 'permutive-tech-challenges',
   keyFilename: path1,
   databaseId: '(default)'
 });
-
-const TAXONOMY_ID = 'iab_3_1';
 
 app.post("/webhook", async (request, response) => {
   const body = request.body as WebhookRequest;
@@ -40,24 +38,22 @@ app.post("/webhook", async (request, response) => {
     const urlParts = url1.split('-');
     const articleId = urlParts[urlParts.length - 1];
 
-
     if (!articleId || isNaN(Number(articleId))) {
       return response.json({ classifications: [] });
     }
 
-
     const docRef = db.collection('tdc_article_categories').doc(articleId);
     const docSnap = await docRef.get();
-
 
     if (docSnap.exists === false) {
       return response.json({ classifications: [] });
     }
 
-
     const articleData = docSnap.data();
     const rawCategories = articleData?.categories;
 
+    const taxonomiesList = getTaxonomies();
+    const dynamicTaxonomyId = taxonomiesList[0]?.id;
 
     const structuredOutput = [];
 
@@ -68,7 +64,7 @@ app.post("/webhook", async (request, response) => {
         const tagObject = {
           type: "categories",
           value: String(currentCategoryNumber),
-          taxonomy: TAXONOMY_ID
+          taxonomy: dynamicTaxonomyId 
         };
         
         structuredOutput.push(tagObject);
