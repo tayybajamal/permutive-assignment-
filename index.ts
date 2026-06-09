@@ -7,30 +7,17 @@ type WebhookRequest =
   | { type: "taxonomies" }
   | { type: "classify"; url: string };
 
-const PROJECT_ID = "permutive-tech-challenges";
-const KEY_FILE = "permutive-tech-challenges-tayybajamal.json";
-
-function createFirestore(): Firestore {
-  const credentialsJson = process.env.GOOGLE_CREDENTIALS_JSON;
-  if (credentialsJson) {
-    return new Firestore({
-      projectId: PROJECT_ID,
-      credentials: JSON.parse(credentialsJson),
-      databaseId: "(default)",
-    });
-  }
-
-  return new Firestore({
-    projectId: PROJECT_ID,
-    keyFilename: path.join(process.cwd(), KEY_FILE),
-    databaseId: "(default)",
-  });
-}
-
 const app = express();
 app.use(express.json());
 
-const db = createFirestore();
+const file = 'permutive-tech-challenges-tayybajamal.json';
+const path1 = path.join(process.cwd(), file);
+
+const db = new Firestore({
+  projectId: 'permutive-tech-challenges',
+  keyFilename: path1,
+  databaseId: '(default)'
+});
 
 app.post("/webhook", async (request, response) => {
   const body = request.body as WebhookRequest;
@@ -41,53 +28,65 @@ app.post("/webhook", async (request, response) => {
   }
 
   if (body.type === "classify") {
-    try {
-      const { url } = body;
+    const { url } = body;
+    console.log(" incoming URL:", url);
 
-      let url1 = url;
-      if (url1.endsWith("/")) {
-        url1 = url1.slice(0, -1);
-      }
-
-      const urlParts = url1.split("-");
-      const articleId = urlParts[urlParts.length - 1];
-
-      if (!articleId || isNaN(Number(articleId))) {
-        return response.json({ classifications: [] });
-      }
-
-      const docRef = db.collection("tdc_article_categories").doc(articleId);
-      const docSnap = await docRef.get();
-
-      if (!docSnap.exists) {
-        return response.json({ classifications: [] });
-      }
-
-      const articleData = docSnap.data();
-      const rawCategories = articleData?.categories;
-
-      const taxonomiesList = getTaxonomies();
-      const dynamicTaxonomyId = taxonomiesList[0]?.id;
-
-      const structuredOutput = [];
-
-      if (rawCategories) {
-        for (let i = 0; i < rawCategories.length; i++) {
-          const currentCategoryNumber = rawCategories[i];
-
-          structuredOutput.push({
-            type: "categories",
-            value: String(currentCategoryNumber),
-            taxonomy: dynamicTaxonomyId,
-          });
-        }
-      }
-
-      return response.json({ classifications: structuredOutput });
-    } catch (error) {
-      console.error("Error processing classify request:", error);
-      return response.status(500).json({ error: "Internal Server Error" });
+    let url1 = url;
+    if (url1.endsWith('/')) {
+      url1 = url1.slice(0, -1);
     }
+
+    const urlParts = url1.split('-');
+    const articleId = urlParts[urlParts.length - 1];
+    console.log(" Extracted Article ID String:", articleId);
+
+    if (!articleId || isNaN(Number(articleId))) {
+      return response.json({ classifications: [] });
+    }
+
+    let docRef = db.collection('tdc_article_categories').doc(articleId);
+    let docSnap = await docRef.get();
+
+    if (!docSnap.exists) {
+      console.log(` String key "${articleId}" not found. Trying integer key...`);
+      docRef = db.collection('tdc_article_categories').doc(String(Number(articleId)));
+      docSnap = await docRef.get();
+    }
+
+    console.log(" Database document exists?:", docSnap.exists);
+
+    if (!docSnap.exists) {
+      console.log("Document does not exist in Firestore collection under this ID.");
+      return response.json({ classifications: [] });
+    }
+
+    const articleData = docSnap.data();
+    console.log(" Data object retrieved:", JSON.stringify(articleData));
+    
+    const rawCategories = articleData?.categories;
+    console.log(" Target categories array:", rawCategories);
+
+    const taxonomiesList = getTaxonomies();
+    const dynamicTaxonomyId = taxonomiesList[0]?.id;
+
+    const structuredOutput = [];
+
+    if (rawCategories && Array.isArray(rawCategories)) {
+      for (let i = 0; i < rawCategories.length; i++) {
+        const currentCategoryNumber = rawCategories[i];
+        
+        const tagObject = {
+          type: "categories",
+          value: String(currentCategoryNumber),
+          taxonomy: dynamicTaxonomyId 
+        };
+        
+        structuredOutput.push(tagObject);
+      }
+    }
+
+    console.log(" Sending Output to Permutive:", JSON.stringify({ classifications: structuredOutput }));
+    return response.json({ classifications: structuredOutput });
   }
 
   return response.status(400).json({
